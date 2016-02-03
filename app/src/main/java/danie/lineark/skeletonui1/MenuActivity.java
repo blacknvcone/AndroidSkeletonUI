@@ -1,5 +1,6 @@
 package danie.lineark.skeletonui1;
 
+import android.content.BroadcastReceiver;
 import android.os.Bundle;
 import android.support.v4.widget.DrawerLayout;
 import android.support.v7.app.AppCompatActivity;
@@ -26,6 +27,7 @@ import com.mikepenz.materialdrawer.model.interfaces.IProfile;
 import danie.lineark.skeletonui1.fragment.*;
 
 
+
 public class MenuActivity extends AppCompatActivity {
 
     //save our header or result
@@ -35,6 +37,7 @@ public class MenuActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_menu);
+
 
         // Handle Toolbar
         Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
