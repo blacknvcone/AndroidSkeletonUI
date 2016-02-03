@@ -33,6 +33,7 @@ public class MenuActivity extends AppCompatActivity {
     //save our header or result
     private Drawer result = null;
 
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
