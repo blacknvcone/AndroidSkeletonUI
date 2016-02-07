@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -30,31 +31,10 @@ import android.widget.Toast;
 
 
 import org.jsoup.nodes.Document;
-
-
-import org.apache.http.HttpResponse;
-import org.apache.http.NameValuePair;
-import org.apache.http.ParseException;
-import org.apache.http.client.entity.UrlEncodedFormEntity;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.message.BasicNameValuePair;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.util.ArrayList;
-import java.util.List;
-
-import org.json.JSONException;
-import org.json.JSONObject;
 import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 
+import com.loopj.android.http.*;
+import cz.msebera.android.httpclient.Header;
 
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.GoogleApiAvailability;
@@ -73,14 +53,13 @@ public class LoginActivity extends Activity {
     private BroadcastReceiver mRegistrationBroadcastReceiver;
 
     private String CSRFTOKEN = null;
-    private DefaultHttpClient client;
     private String username,password;
 
     private SharedPreferences sharedPreferences,prefs;
     private Context mContext;
 
     //Change Auth URL Here ....
-    public static final String AuthURL = "http://36.81.202.248/android/login";
+    public static final String AuthURL = "http://lineark.esy.es/login";
     private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
     private static final String TAG = "GcmActivity";
     private static final String REG_ID = "regId";
@@ -91,8 +70,7 @@ public class LoginActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        //Init Client Web Socket And Context
-        client = new DefaultHttpClient();
+        //Init Context
         mContext = this.getApplicationContext();
 
         emailTextView = (AutoCompleteTextView) findViewById(R.id.email);
@@ -103,7 +81,7 @@ public class LoginActivity extends Activity {
         prefs = getSharedPreferences("UserDetails", Context.MODE_PRIVATE);
         String registrationId = prefs.getString(REG_ID, "");
 
-        //When Email ID is set in Sharedpref, User will be taken to HomeActivity
+        //When Email ID is set in Sharedpref, User will be taken to MenuActivity
         if (!TextUtils.isEmpty(registrationId)) {
             Intent i = new Intent(mContext, MenuActivity.class);
             //i.putExtra("regId", registrationId);
@@ -116,6 +94,11 @@ public class LoginActivity extends Activity {
             @Override
             public void onClick(View view) {
                 showProgress(true);
+                username = emailTextView.getText().toString();
+                password = passwordTextView.getText().toString();
+
+                //If Using Login Inteface -> Call registAPI inside AuthRest Client
+                //new AuthRestClient().get(username,password);
                 registAPI();
             }
         });
@@ -128,8 +111,9 @@ public class LoginActivity extends Activity {
                 Boolean sentToken = sharedPreferences.getBoolean(QuickstartPreferences.SENT_TOKEN_TO_SERVER, false);
                 if (sentToken) {
                     showProgress(false);
-                    Log.i("Log Auth","REGISTRASI TOKEN PASSED !");
+                    Log.i("Log Auth", "REGISTRASI TOKEN PASSED !");
 
+                    Toast.makeText(getApplicationContext(), "Selamat Datang", Toast.LENGTH_LONG).show();
                     Intent i = new Intent(mContext, MenuActivity.class);
                     startActivity(i);
                     finish();
@@ -163,6 +147,7 @@ public class LoginActivity extends Activity {
                 apiAvailability.getErrorDialog(this, resultCode, PLAY_SERVICES_RESOLUTION_REQUEST)
                         .show();
             } else {
+                Toast.makeText(getApplicationContext(), "Mohon Install Google Play Terlebih Dahulu", Toast.LENGTH_LONG).show();
                 Log.i(TAG, "This device is not supported.");
                 finish();
             }
@@ -183,7 +168,6 @@ public class LoginActivity extends Activity {
         LocalBroadcastManager.getInstance(this).unregisterReceiver(mRegistrationBroadcastReceiver);
         super.onPause();
     }
-
 
     /**
      * Shows the progress UI and hides the login form.
@@ -221,127 +205,54 @@ public class LoginActivity extends Activity {
         }
     }
 
-    class getsToken extends AsyncTask<String, Void, Boolean> {
+    public class AuthRestClient{
+        private  AsyncHttpClient client = new AsyncHttpClient();
 
-        @Override
-        protected Boolean doInBackground(String... urls) {
-            try {
-
-                String hidden_token = "";
-                String response = "";
-
-                //------------------>>
-                HttpGet httpget = new HttpGet(urls[0]);
-                HttpResponse execute = client.execute(httpget);
-
-                // Get the response of the GET-request
-                InputStream content = execute.getEntity().getContent();
-                BufferedReader buffer = new BufferedReader(new InputStreamReader(content));
-                String s = "";
-                while((s = buffer.readLine()) != null)
-                    response += s;
-
-                content.close();
-                buffer.close();
-
-                // Get the value of the hidden input-field with the name __RequestVerificationToken
-                String TOKEN;
-                TOKEN = "_token";
-
-                Document doc = Jsoup.parse(response);
-                org.jsoup.nodes.Element el = doc.select("input[name*=" + TOKEN).first();
-                hidden_token = el.attr("value");
-
-                CSRFTOKEN = hidden_token;
-                Log.i("CSRF LOG",""+hidden_token);
-                return true;
-
-                //------------------>>
-
-            } catch (ParseException e1) {
-                e1.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return false;
-        }
-
-        protected void onPostExecute(Boolean result) {
-            if (result == false){
-                Toast.makeText(getApplicationContext(), "Gagal Mengkoneksikan Ke Server, Cek Koneksi Anda", Toast.LENGTH_LONG).show();
-            } else {
-                new AuthTask().execute(username, password, CSRFTOKEN);
-            }
-        }
-
-    }
-
-    class AuthTask extends AsyncTask<String, Void, Boolean> {
-
-        int responCodeStatus = 0;
-        String rsl;
-
-        @Override
-        protected Boolean doInBackground(String... arg0) {
-            String result = "";
-            int responseCode = 0;
-            try {
-
-                HttpPost httppost = new HttpPost(AuthURL);
-
-                List<NameValuePair> nameValuePairs = new ArrayList<NameValuePair>();
-                nameValuePairs.add(new BasicNameValuePair("username", arg0[0]));
-                nameValuePairs.add(new BasicNameValuePair("password", arg0[1]));
-                nameValuePairs.add(new BasicNameValuePair("_token", arg0[2]));
-                httppost.setEntity(new UrlEncodedFormEntity(nameValuePairs));
-
-                HttpResponse response;
-
-
-                response = client.execute(httppost);
-                responseCode = response.getStatusLine().getStatusCode();
-
-                BufferedReader rd = new BufferedReader(new InputStreamReader(response.getEntity().getContent()));
-
-                String line;
-                while ((line = rd.readLine()) != null) {
-                    result = line.trim();
+        public void get(final String email2, final String password2) {
+            client.setEnableRedirects(true);
+            client.get(AuthURL, new TextHttpResponseHandler() {
+                @Override
+                public void onFailure(int statusCode, Header[] headers, String responseString, Throwable throwable) {
+                    Log.i("CSRF LOG", "Failed-> " + responseString);
                 }
-                Log.i("LOG AUTH", result);
-                Log.i("LOG AUTH", "CODE STA: " + responseCode);
 
-                rsl = result;
-                responCodeStatus = responseCode;
-                return true;
-                //------------------>>
+                @Override
+                public void onSuccess(int statusCode, Header[] headers, String responseString) {
+                    // Get the value of the hidden input-field with the name __RequestVerificationToken
+                    String TOKEN;
+                    TOKEN = "_token";
 
-            } catch (ParseException e1) {
-                e1.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            return false;
+                    Document doc = Jsoup.parse(responseString);
+                    org.jsoup.nodes.Element el = doc.select("input[name*=" + TOKEN).first();
+                    String hidden_token = el.attr("value");
+
+                    CSRFTOKEN = hidden_token;
+                    Log.i("CSRF LOG", "" + hidden_token);
+
+
+                    RequestParams req = new RequestParams();
+                        req.put("email",email2);
+                        req.put("password", password2);
+                        req.put("_token", CSRFTOKEN);
+                    post(req);
+                }
+            });
+
         }
+        public void post(RequestParams params) {
 
-        protected void onPostExecute(Boolean result) {
+            client.post(AuthURL, params, new AsyncHttpResponseHandler() {
+                @Override
+                public void onSuccess(int statusCode, Header[] headers, byte[] responseBody) {
+                    Log.i("LOG AUTH", "Success -> " +statusCode);
+                }
 
-            if (responCodeStatus != 200) {
-               // showProgress(false);
-                Toast.makeText(getApplicationContext(), "Cek Kembali User dan Password !", Toast.LENGTH_LONG).show();
-            } else {
-                Intent main = new Intent(LoginActivity.this, MenuActivity.class);
-                Bundle xdata = new Bundle();
-
-                xdata.putString("username", username);
-                main.putExtras(xdata);
-                startActivity(main);
-                onDestroy();
-            }
-
-            if (result == false) {
-               // showProgress(false);
-                Toast.makeText(getApplicationContext(), "Gagal Mengkoneksikan Ke Server, Cek Koneksi Anda !", Toast.LENGTH_LONG).show();
-            }
+                @Override
+                public void onFailure(int statusCode, Header[] headers, byte[] responseBody, Throwable error) {
+                    Log.i("LOG AUTH", "Failed ->" +statusCode);
+                    Log.i("LOG AUTH","Error ->"+error);
+                }
+            });
 
 
         }
