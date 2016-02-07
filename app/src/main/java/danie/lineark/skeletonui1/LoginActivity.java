@@ -9,10 +9,17 @@ import android.app.Activity;
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
 import android.annotation.TargetApi;
+import android.content.BroadcastReceiver;
+import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
+import android.support.v4.content.LocalBroadcastManager;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
@@ -49,6 +56,13 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 
 
+import com.google.android.gms.common.ConnectionResult;
+import com.google.android.gms.common.GoogleApiAvailability;
+
+import danie.lineark.skeletonui1.service.QuickstartPreferences;
+import danie.lineark.skeletonui1.service.RegistrationIntentService;
+
+
 
 public class LoginActivity extends Activity {
 
@@ -56,14 +70,20 @@ public class LoginActivity extends Activity {
     private View progressView;
     private AutoCompleteTextView emailTextView;
     private EditText passwordTextView;
-
+    private BroadcastReceiver mRegistrationBroadcastReceiver;
 
     private String CSRFTOKEN = null;
     private DefaultHttpClient client;
     private String username,password;
 
+    private SharedPreferences sharedPreferences,prefs;
+    private Context mContext;
+
     //Change Auth URL Here ....
     public static final String AuthURL = "http://36.81.202.248/android/login";
+    private static final int PLAY_SERVICES_RESOLUTION_REQUEST = 9000;
+    private static final String TAG = "GcmActivity";
+    private static final String REG_ID = "regId";
 
 
     @Override
@@ -71,26 +91,97 @@ public class LoginActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_login);
 
-        //Init Client Web Socket
+        //Init Client Web Socket And Context
         client = new DefaultHttpClient();
+        mContext = this.getApplicationContext();
 
         emailTextView = (AutoCompleteTextView) findViewById(R.id.email);
         passwordTextView = (EditText) findViewById(R.id.password);
         loginFormView = findViewById(R.id.login_form);
         progressView = findViewById(R.id.login_progress);
 
+        prefs = getSharedPreferences("UserDetails", Context.MODE_PRIVATE);
+        String registrationId = prefs.getString(REG_ID, "");
+
+        //When Email ID is set in Sharedpref, User will be taken to HomeActivity
+        if (!TextUtils.isEmpty(registrationId)) {
+            Intent i = new Intent(mContext, MenuActivity.class);
+            //i.putExtra("regId", registrationId);
+            startActivity(i);
+            finish();
+        }
+
         Button loginButton = (Button) findViewById(R.id.email_sign_in_button);
         loginButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
-                //initLogin();
                 showProgress(true);
-                username = emailTextView.getText().toString();
-                password = passwordTextView.getText().toString();
-                new getsToken().execute(AuthURL);
-
+                registAPI();
             }
         });
+
+        mRegistrationBroadcastReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+
+                sharedPreferences = PreferenceManager.getDefaultSharedPreferences(context);
+                Boolean sentToken = sharedPreferences.getBoolean(QuickstartPreferences.SENT_TOKEN_TO_SERVER, false);
+                if (sentToken) {
+                    showProgress(false);
+                    Log.i("Log Auth","REGISTRASI TOKEN PASSED !");
+
+                    Intent i = new Intent(mContext, MenuActivity.class);
+                    startActivity(i);
+                    finish();
+                } else {
+                    showProgress(false);
+                    Log.i("Log Auth","REGISTRASI TOKEN Gagal !");
+                }
+            }
+        };
+    }
+
+    public void registAPI(){
+
+        if (checkPlayServices()) {
+            // Start IntentService to register this application with GCM.
+            Intent intent = new Intent(this, RegistrationIntentService.class);
+            startService(intent);
+        }
+    }
+
+    /**
+     * Check the device to make sure it has the Google Play Services APK. If
+     * it doesn't, display a dialog that allows users to download the APK from
+     * the Google Play Store or enable it in the device's system settings.
+     */
+    private boolean checkPlayServices() {
+        GoogleApiAvailability apiAvailability = GoogleApiAvailability.getInstance();
+        int resultCode = apiAvailability.isGooglePlayServicesAvailable(this);
+        if (resultCode != ConnectionResult.SUCCESS) {
+            if (apiAvailability.isUserResolvableError(resultCode)) {
+                apiAvailability.getErrorDialog(this, resultCode, PLAY_SERVICES_RESOLUTION_REQUEST)
+                        .show();
+            } else {
+                Log.i(TAG, "This device is not supported.");
+                finish();
+            }
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        LocalBroadcastManager.getInstance(this).registerReceiver(mRegistrationBroadcastReceiver,
+                new IntentFilter(QuickstartPreferences.REGISTRATION_COMPLETE));
+    }
+
+    @Override
+    protected void onPause() {
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(mRegistrationBroadcastReceiver);
+        super.onPause();
     }
 
 
